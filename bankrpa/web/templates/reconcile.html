@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}自动对账{% endblock %}
+{% block content %}
+<h2>自动对账与核销</h2>
+<div class="card">
+  <form method="post" action="/reconcile/auto" class="inline">
+    <button class="btn" type="submit">执行自动对账（1:1 / 1:N / N:1）</button>
+  </form>
+  <span class="muted">自动策略：金额相等 1:1 → 单笔流水覆盖多张应收 1:N → 同客户多笔流水凑一张 N:1
+    → 同客户部分付款；配不上的自动进“差异处理”。所有核销在单事务写锁内完成，并发下不会重复核销。</span>
+</div>
+
+<div class="card">
+<h2>手工核销（支持部分付款）</h2>
+<form method="post" action="/reconcile/manual" class="toolbar">
+  <div><label>收入流水（剩余可配）</label>
+    <select name="txn_id" required>
+      {% for t in open_txn %}
+      <option value="{{ t.id }}">{{ t.txn_ref }} | {{ t.counterparty }} |
+        余 {{ '%.2f'|format(t.amount - t.matched_amount) }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label>应收（未收余额）</label>
+    <select name="receivable_id" required>
+      {% for r in open_ar %}
+      <option value="{{ r.id }}">{{ r.ar_no }} | {{ r.customer }} |
+        余 {{ '%.2f'|format(r.amount - r.received_amount) }}</option>
+      {% endfor %}
+    </select></div>
+  <div><label>本次核销金额</label><input name="amount" type="number" step="0.01" min="0.01" required></div>
+  <div><label>操作人</label><input name="operator" value="manual" required></div>
+  <div><button class="btn" type="submit">核销</button></div>
+</form>
+{% if not open_txn or not open_ar %}<p class="muted">没有可配的流水或应收。</p>{% endif %}
+</div>
+
+<div class="card">
+<h2>有效核销记录（可冲销，冲销留痕）</h2>
+<table>
+<thead><tr><th>#</th><th>流水号</th><th>流水金额</th><th>应收单号</th><th>客户</th>
+<th>核销金额</th><th>来源</th><th>操作人</th><th>时间</th><th>操作</th></tr></thead>
+<tbody>
+{% for m in entries %}
+<tr>
+  <td>{{ m.id }}</td><td>{{ m.txn_ref }}</td>
+  <td class="amount">{{ '%.2f'|format(m.txn_amount) }}</td>
+  <td>{{ m.ar_no }}</td><td>{{ m.customer }}</td>
+  <td class="amount">{{ '%.2f'|format(m.amount) }}</td>
+  <td>{{ '自动' if m.source=='auto' else '手工' }}</td>
+  <td>{{ m.operator }}</td><td class="muted">{{ m.created_at }}</td>
+  <td><form class="inline" method="post" action="/reconcile/reverse/{{ m.id }}">
+    <button class="btn btn-sm btn-red" type="submit">冲销</button></form></td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endblock %}

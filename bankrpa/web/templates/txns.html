@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}流水库{% endblock %}
+{% block content %}
+<h2>流水库</h2>
+<div class="card">
+<form method="get" class="toolbar">
+  <div><label>账户</label>
+    <select name="account_id" onchange="this.form.submit()">
+      <option value="">全部</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {% if selected==a.id %}selected{% endif %}>
+        {{ a.bank_name }}</option>{% endfor %}
+    </select></div>
+  <div><label>关键字（流水号/对方/摘要）</label><input name="q" value="{{ q }}"></div>
+  <div><label>仅未配平</label>
+    <select name="only_unmatched" onchange="this.form.submit()">
+      <option value="0" {% if not only_unmatched %}selected{% endif %}>全部</option>
+      <option value="1" {% if only_unmatched %}selected{% endif %}>仅未配平</option>
+    </select></div>
+  <div><button class="btn btn-gray" type="submit">查询</button></div>
+</form>
+</div>
+<div class="card">
+<table>
+<thead><tr><th>交易日期</th><th>银行</th><th>流水号</th><th>方向</th><th>金额</th>
+<th>已配金额</th><th>对方户名</th><th>摘要</th><th>回单付款方/用途</th><th>回单</th></tr></thead>
+<tbody>
+{% for t in txns %}
+<tr>
+  <td style="white-space:nowrap">{{ t.txn_date }}</td>
+  <td>{{ t.bank_name }}</td>
+  <td>{{ t.txn_ref }}</td>
+  <td><span class="tag tag-{{ 'in' if t.direction=='in' else 'out' }}">
+    {{ '收入' if t.direction=='in' else '支出' }}</span></td>
+  <td class="amount">{{ '%.2f'|format(t.amount) }}</td>
+  <td class="amount">{{ '%.2f'|format(t.matched_amount) }}</td>
+  <td>{{ t.counterparty }}</td>
+  <td>{{ t.summary }}</td>
+  <td class="muted">{{ t.receipt_payer or '—' }}<br>{{ t.receipt_purpose or '—' }}</td>
+  <td>{% if t.receipt_path %}
+    <a class="btn btn-sm btn-gray" target="_blank" href="/txns/receipt/{{ t.id }}">PDF</a>
+    {% else %}—{% endif %}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+<p class="muted" style="margin-top:10px">共 {{ txns|length }} 行（最多展示 500 行）。回单字段由 PDF 自动抽取。</p>
+</div>
+{% endblock %}

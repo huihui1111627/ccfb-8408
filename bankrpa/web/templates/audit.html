@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}操作日志{% endblock %}
+{% block content %}
+<h2>操作留痕（审计日志）</h2>
+<div class="card">
+<table>
+<thead><tr><th>#</th><th>动作</th><th>实体</th><th>实体ID</th><th>详情</th>
+<th>操作人</th><th>时间</th></tr></thead>
+<tbody>
+{% for l in logs %}
+<tr>
+  <td>{{ l.id }}</td><td>{{ l.action }}</td><td>{{ l.entity }}</td>
+  <td>{{ l.entity_id if l.entity_id is not none else '—' }}</td>
+  <td>{{ l.detail }}</td><td>{{ l.operator }}</td>
+  <td class="muted" style="white-space:nowrap">{{ l.created_at }}</td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endblock %}

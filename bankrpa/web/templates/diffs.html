@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}差异处理{% endblock %}
+{% block content %}
+<h2>差异处理（人工核销留痕）</h2>
+<div class="card toolbar">
+  <a class="btn {% if status_filter=='open' %}btn-gray{% endif %}" href="/diffs?status_filter=open">待处理</a>
+  <a class="btn {% if status_filter=='resolved' %}btn-gray{% endif %}" href="/diffs?status_filter=resolved">已处理</a>
+  <a class="btn {% if status_filter=='all' %}btn-gray{% endif %}" href="/diffs?status_filter=all">全部</a>
+</div>
+<div class="card">
+<table>
+<thead><tr><th>#</th><th>类型</th><th>单号</th><th>名称</th><th>未配金额</th>
+<th>原因</th><th>状态</th><th>处理说明 / 操作人</th><th>时间</th><th>人工核销</th></tr></thead>
+<tbody>
+{% for d in diffs %}
+<tr>
+  <td>{{ d.id }}</td>
+  <td>{{ '未配平流水' if d.kind=='unmatched_txn' else '未收齐应收' }}</td>
+  <td>{{ d.ref_no }}</td><td>{{ d.ref_name }}</td>
+  <td class="amount">{{ '%.2f'|format(d.amount) }}</td>
+  <td class="muted">{{ d.reason }}</td>
+  <td><span class="tag tag-{{ 'open' if d.status=='open' else 'resolved' }}">
+    {{ '待处理' if d.status=='open' else '已处理' }}</span></td>
+  <td class="muted">
+    {% if d.status=='resolved' %}{{ d.resolution }}<br>{{ d.operator }} · {{ d.resolved_at }}{% endif %}
+  </td>
+  <td class="muted">{{ d.created_at }}</td>
+  <td>
+    {% if d.status=='open' %}
+    <form method="post" action="/diffs/resolve/{{ d.id }}" class="toolbar" style="margin:0">
+      <input name="resolution" placeholder="处理说明（必填）" required style="width:170px">
+      <input name="operator" value="manual" style="width:80px">
+      <button class="btn btn-sm" type="submit">核销</button>
+    </form>
+    {% endif %}
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+{% endblock %}

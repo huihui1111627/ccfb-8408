@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}操作失败{% endblock %}
+{% block content %}
+<div class="error-box">
+  <h2 style="margin-top:0">操作未执行</h2>
+  <p>{{ message }}</p>
+  <a class="btn btn-gray" href="javascript:history.back()">返回上一页</a>
+</div>
+{% endblock %}

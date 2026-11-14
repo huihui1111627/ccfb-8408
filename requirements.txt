@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+jinja2
+pyyaml
+playwright
+pdfplumber
+reportlab
+pytest
+httpx

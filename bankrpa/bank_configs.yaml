@@ -1,0 +1,146 @@
+# 网银下载流程配置：新增银行只需加一段配置，引擎 rpa/engine.py 不允许出现银行硬编码。
+#
+# 通用约定：
+#   login.*     登录页表单选择器（css: 前缀，引擎统一走 CSS 选择器）
+#   flow        登录后页面动作序列：goto/fill/click/select_option
+#   txn.*       明细页：URL、日期参数、行选择器、单元格选择器、表头映射
+#   paging.*    翻页：下一页选择器（候选多个，命中哪个用哪个）、禁用标志
+#   amount      金额解析：split 模式（收入/支出两列）或 signed 模式（单列+方向关键词）
+#   receipt     回单链接选择器（相对 href，自动与 base_url 拼接）
+#   balance     账户余额元素选择器
+
+defaults: &defaults
+  token_path: "/token?account={username}"   # 相对令牌服务地址
+  timeout_ms: 15000
+  max_pages: 50
+
+banks:
+
+  ecd:
+    <<: *defaults
+    name: 华东发展银行
+    login:
+      path: "/"
+      user_selector: "css:#loginUser"
+      pwd_selector: "css:#loginPwd"
+      otp_selector: "css:#dynamicOtp"
+      submit_selector: "css:#loginBtn"
+      landing_path: "/transactions"
+    txn:
+      path: "/transactions"
+      date_from_param: "startDate"
+      date_to_param: "endDate"
+      page_param: "page"
+      from_selector: "css:#dateFrom"
+      to_selector: "css:#dateTo"
+      query_selector: "css:#queryBtn"
+      row_selector: "css:#txnTable tbody tr"
+      headers: ["交易时间", "流水号", "借贷方向", "交易金额", "对方户名", "摘要"]
+      cells:
+        txn_time: "td:nth-child(1)"
+        txn_ref: "td:nth-child(2)"
+        direction: "td:nth-child(3)"
+        amount: "td:nth-child(4)"
+        counterparty: "td:nth-child(5)"
+        summary: "td:nth-child(6)"
+        receipt: "td:nth-child(7) a"
+      amount:
+        mode: signed
+        amount_cell: "amount"
+        direction_cell: "direction"
+        in_keywords: ["收入", "贷"]
+        out_keywords: ["支出", "借"]
+    paging:
+      type: link
+      next_candidates: ["css:a#nextPage"]
+      disabled_class: "disabled"
+    balance:
+      selector: "css:#balance"
+    receipt:
+      link_in_row: true
+      link_selector: "td:nth-child(7) a"
+
+  scb:
+    <<: *defaults
+    name: 南方商业银行
+    login:
+      path: "/"
+      user_selector: "css:.user-input"
+      pwd_selector: "css:.pwd-input"
+      otp_selector: "css:.otp-input"
+      submit_selector: "css:.submit-btn"
+      landing_path: "/transactions"
+    txn:
+      path: "/transactions"
+      date_from_param: "startDate"
+      date_to_param: "endDate"
+      page_param: "page"
+      from_selector: "css:.date-range.start"
+      to_selector: "css:.date-range.end"
+      query_selector: "css:.query-button"
+      row_selector: "css:table.transaction-grid tbody tr"
+      headers: ["交易时间", "流水号", "收入金额", "支出金额", "对方户名", "摘要"]
+      cells:
+        txn_time: "td.col-time"
+        txn_ref: "td.col-ref"
+        credit: "td.col-in"
+        debit: "td.col-out"
+        counterparty: "td.col-party"
+        summary: "td.col-summary"
+        receipt: "a.receipt-link"
+      amount:
+        mode: split
+        credit_cell: "credit"
+        debit_cell: "debit"
+    paging:
+      type: button
+      next_candidates: ["css:.pager .btn-next"]
+      disabled_attr: "disabled"
+    balance:
+      selector: "css:.balance-value"
+    receipt:
+      link_in_row: true
+      link_selector: "a.receipt-link"
+
+  wcb:
+    <<: *defaults
+    name: 西部普惠银行
+    login:
+      path: "/"
+      user_selector: "css:[data-field='user']"
+      pwd_selector: "css:[data-field='pwd']"
+      otp_selector: "css:[data-field='otp']"
+      submit_selector: "css:[data-act='login']"
+      landing_path: "/transactions"
+    txn:
+      path: "/transactions"
+      date_from_param: "startDate"
+      date_to_param: "endDate"
+      page_param: "page"
+      from_selector: "css:[data-input='from']"
+      to_selector: "css:[data-input='to']"
+      query_selector: "css:[data-act='search']"
+      row_selector: "css:ul.txn-list li.txn-card"
+      headers: ["交易时间", "流水号", "借贷", "收入", "支出", "对方户名", "摘要"]
+      cells:
+        txn_time: "span[data-k='time']"
+        txn_ref: "span[data-k='ref']"
+        direction: "span[data-k='direction']"
+        credit: "span[data-k='credit']"
+        debit: "span[data-k='debit']"
+        counterparty: "span[data-k='party']"
+        summary: "span[data-k='memo']"
+        receipt: "a[data-k='receipt']"
+      amount:
+        mode: split
+        credit_cell: "credit"
+        debit_cell: "debit"
+    paging:
+      type: button
+      next_candidates: ["css:.pagination button[data-act='next']"]
+      disabled_attr: "disabled"
+    balance:
+      selector: "css:[data-balance]"
+    receipt:
+      link_in_row: true
+      link_selector: "a[data-k='receipt']"

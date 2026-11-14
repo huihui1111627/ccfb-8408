@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}银行账户{% endblock %}
+{% block content %}
+<h2>银行账户（{{ accounts|length }} 家）</h2>
+<div class="card">
+<table>
+<thead><tr><th>银行</th><th>代码</th><th>账号</th><th>户名</th><th>网银地址</th>
+<th>账面余额</th><th>流水数</th><th>成功任务</th><th>操作</th></tr></thead>
+<tbody>
+{% for a in accounts %}
+<tr>
+  <td>{{ a.bank_name }}</td><td>{{ a.bank_code }}</td>
+  <td>{{ a.account_no }}</td><td>{{ a.account_name }}</td>
+  <td class="muted">{{ a.base_url }}</td>
+  <td class="amount">{{ '%.2f'|format(a.book_balance) }}</td>
+  <td class="amount">{{ a.txn_count }}</td>
+  <td class="amount">{{ a.task_count }}</td>
+  <td style="white-space:nowrap">
+    <form class="inline" method="post" action="/tasks/incremental/{{ a.id }}">
+      <button class="btn btn-sm" type="submit">增量下载</button>
+    </form>
+    <a class="btn btn-sm btn-gray" href="/tasks?account_id={{ a.id }}">任务</a>
+    <a class="btn btn-sm btn-gray" href="/txns?account_id={{ a.id }}">流水</a>
+    <a class="btn btn-sm btn-gray" href="/report?account_id={{ a.id }}">调节表</a>
+  </td>
+</tr>
+{% endfor %}
+</tbody>
+</table>
+<p class="muted" style="margin-top:10px">“增量下载”自动取上次成功任务结束日的次日至今天；无历史时回溯 7 天。重复流水由数据库唯一约束挡掉，可安全跨天补漏重跑。</p>
+</div>
+{% endblock %}

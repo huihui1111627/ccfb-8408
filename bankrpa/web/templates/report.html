@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}余额调节表{% endblock %}
+{% block content %}
+<h2>每日余额调节表</h2>
+<div class="card">
+<form method="get" class="toolbar">
+  <div><label>账户</label>
+    <select name="account_id">
+      <option value="">全部账户</option>
+      {% for a in accounts %}<option value="{{ a.id }}" {% if selected==a.id %}selected{% endif %}>
+        {{ a.bank_name }} - {{ a.account_no }}</option>{% endfor %}
+    </select></div>
+  <div><label>报表日期</label><input type="date" name="report_date" value="{{ report_date }}"></div>
+  <div><button class="btn" type="submit">出表</button></div>
+</form>
+</div>
+
+{% for r in reports %}
+<div class="card">
+<h2>{{ r.account.bank_name }}（{{ r.account.account_no }}） — {{ r.report_date }}
+  {% if r.balanced %}<span class="tag tag-success">已平衡</span>
+  {% else %}<span class="tag tag-failed">不平衡</span>{% endif %}</h2>
+<table>
+<thead><tr><th>银行对账单侧</th><th class="amount">金额</th><th>企业账面侧</th><th class="amount">金额</th></tr></thead>
+<tbody>
+<tr>
+  <td>银行对账单余额</td><td class="amount">{{ '%.2f'|format(r.bank_balance) }}</td>
+  <td>企业账面存款余额</td><td class="amount">{{ '%.2f'|format(r.book_balance) }}</td>
+</tr>
+<tr>
+  <td>＋ 企业已收银行未收（应收未收齐，{{ r.book_add_rows|length }} 笔）</td>
+  <td class="amount">{{ '%.2f'|format(r.book_add) }}</td>
+  <td>＋ 银行已收企业未收（未配平收入流水，{{ r.bank_add_rows|length }} 笔）</td>
+  <td class="amount">{{ '%.2f'|format(r.bank_add) }}</td>
+</tr>
+<tr>
+  <td>－ 企业已付银行未付</td><td class="amount">{{ '%.2f'|format(r.book_sub) }}</td>
+  <td>－ 银行已付企业未付（未核销支出流水，{{ r.bank_sub_rows|length }} 笔）</td>
+  <td class="amount">{{ '%.2f'|format(r.bank_sub) }}</td>
+</tr>
+<tr style="font-weight:700;background:#eef2f7">
+  <td>调节后余额</td><td class="amount {% if r.balanced %}ok{% else %}bad{% endif %}">
+    {{ '%.2f'|format(r.adjusted_bank) }}</td>
+  <td>调节后余额</td><td class="amount {% if r.balanced %}ok{% else %}bad{% endif %}">
+    {{ '%.2f'|format(r.adjusted_book) }}</td>
+</tr>
+</tbody>
+</table>
+{% if not r.balanced %}
+<p class="muted">差额 {{ '%.2f'|format(r.adjusted_bank - r.adjusted_book) }}：
+通常因存在与应收无关的未达流水或跨账户资金，请到差异处理页核查。</p>
+{% endif %}
+</div>
+{% endfor %}
+{% endblock %}

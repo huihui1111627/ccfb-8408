@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>推理调度核心 · 实时监控</title>
+<style>
+  :root {
+    --bg: #0f141b; --panel: #171f2a; --line: #263241; --text: #dbe4ee;
+    --muted: #7d8da1; --accent: #4da3ff; --green: #37c978; --amber: #f0b429;
+    --red: #ef5f6b; --purple: #a78bfa;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font: 13px/1.5 -apple-system, "PingFang SC", "Microsoft YaHei", monospace; }
+  header { padding: 14px 20px; border-bottom: 1px solid var(--line);
+    display: flex; gap: 24px; align-items: center; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .stat { color: var(--muted); }
+  .stat b { color: var(--text); font-weight: 600; }
+  main { padding: 16px 20px; display: grid; gap: 16px;
+    grid-template-columns: 1fr 1fr; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; overflow: hidden; }
+  .panel h2 { margin: 0; padding: 10px 14px; font-size: 13px; font-weight: 600;
+    border-bottom: 1px solid var(--line); color: var(--accent);
+    display: flex; justify-content: space-between; }
+  .panel h2 span.count { color: var(--muted); }
+  .body { padding: 10px 14px; max-height: 340px; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { padding: 5px 8px; text-align: left; border-bottom: 1px solid var(--line);
+    white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; position: sticky; top: 0;
+    background: var(--panel); }
+  .tag { display: inline-block; padding: 1px 7px; border-radius: 10px;
+    font-size: 11px; border: 1px solid var(--line); }
+  .tag.decode { color: var(--green); border-color: var(--green); }
+  .tag.prefill { color: var(--amber); border-color: var(--amber); }
+  .tag.waiting { color: var(--red); border-color: var(--red); }
+  .tag.finished { color: var(--muted); }
+  .tag.swap { color: var(--purple); border-color: var(--purple); }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; width: 90px;
+    display: inline-block; vertical-align: middle; overflow: hidden; }
+  .bar > i { display: block; height: 100%; background: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+    gap: 4px; }
+  .cell { aspect-ratio: 1; border-radius: 4px; display: flex; align-items: center;
+    justify-content: center; font-size: 9px; color: #0b0f14; cursor: default; }
+  .cell.free { background: var(--line); color: var(--muted); }
+  .cell.gpu { background: var(--accent); }
+  .cell.cpu { background: var(--purple); }
+  .legend { display: flex; gap: 14px; margin-bottom: 10px; color: var(--muted); font-size: 11px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+    margin-right: 5px; vertical-align: -1px; }
+  form { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  input, select, button { background: var(--bg); color: var(--text);
+    border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+  button { cursor: pointer; background: var(--accent); color: #0b0f14;
+    border-color: var(--accent); font-weight: 600; }
+  button:hover { filter: brightness(1.1); }
+  .wide { grid-column: 1 / -1; }
+  .muted { color: var(--muted); }
+  .right { margin-left: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>推理调度核心 · 实时监控</h1>
+  <div class="stat">tick <b id="tick">0</b></div>
+  <div class="stat">模式 <b id="mode">-</b></div>
+  <div class="stat">GPU 空闲块 <b id="gpufree">0</b></div>
+  <div class="stat">CPU 空闲块 <b id="cpufree">0</b></div>
+  <div class="stat">换出/换回 <b id="swaps">0/0</b></div>
+  <div class="stat">PCIe 字节 <b id="swapbytes">0</b></div>
+  <div class="stat">目标前向 <b id="tfwd">0</b></div>
+  <div class="stat">草稿前向 <b id="dfwd">0</b></div>
+  <form class="right" id="submitForm">
+    <input type="number" id="plen" value="24" min="1" style="width:70px" title="提示长度">
+    <input type="number" id="nlen" value="40" min="1" style="width:70px" title="生成长度">
+    <input type="number" id="prio" value="3" min="1" max="5" style="width:55px" title="优先级">
+    <select id="modeSel"><option value="sample">采样</option><option value="greedy">贪心</option></select>
+    <button type="submit">提交请求</button>
+  </form>
+</header>
+
+<main>
+  <section class="panel">
+    <h2>正在解码的批次 <span class="count" id="decodeCount"></span></h2>
+    <div class="body">
+      <table>
+        <thead><tr>
+          <th>请求</th><th>状态</th><th>k</th><th>接受率</th><th>EMA</th>
+          <th>出字/tick</th><th>已生成</th><th>采样参数</th><th>块</th>
+        </tr></thead>
+        <tbody id="decodeBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>等待队列（含换出待换回） <span class="count" id="waitCount"></span></h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>#</th><th>请求</th><th>状态</th><th>优先级</th>
+          <th>提示长</th><th>块</th><th>标记</th></tr></thead>
+        <tbody id="waitBody"></tbody>
+      </table>
+      <p class="muted" id="waitEmpty" hidden>队列为空</p>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>显存块占用图 <span class="count" id="blockInfo"></span></h2>
+    <div class="body">
+      <div class="legend">
+        <span><i style="background:var(--accent)"></i>GPU 已占用</span>
+        <span><i style="background:var(--line)"></i>GPU/CPU 空闲</span>
+        <span><i style="background:var(--purple)"></i>CPU（换出）</span>
+        <span class="muted">悬停查看物理块号与所属请求</span>
+      </div>
+      <div class="grid" id="blockGrid"></div>
+    </div>
+  </section>
+
+  <section class="panel wide">
+    <h2>预填充与最近完成 <span class="count" id="finCount"></span></h2>
+    <div class="body">
+      <table>
+        <thead><tr><th>请求</th><th>状态</th><th>提示长</th><th>已生成</th>
+          <th>首字延迟(tick)</th><th>结束原因</th><th>换页</th></tr></thead>
+        <tbody id="miscBody"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+function pct(v) { return (v * 100).toFixed(1) + '%'; }
+function bar(v) {
+  return `<span class="bar"><i style="width:${Math.min(100, v * 100).toFixed(1)}%"></i></span>`;
+}
+function paramCell(r) {
+  if (r.greedy) return '<span class="tag">贪心</span>';
+  return `T=${r.temperature.toFixed(2)} p=${r.top_p.toFixed(2)} rp=${r.rep_penalty.toFixed(2)}`;
+}
+function stateTag(r) {
+  return `<span class="tag ${r.state}">${r.state}</span>`;
+}
+function swapTag(r) {
+  return r.ever_swapped ? '<span class="tag swap">换过页</span>' : '';
+}
+
+function renderDecode(rows) {
+  $('decodeCount').textContent = rows.length + ' 个';
+  $('decodeBody').innerHTML = rows.map(r => `
+    <tr>
+      <td>#${r.id}</td><td>${stateTag(r)}</td>
+      <td>${r.k}</td>
+      <td>${bar(r.accept_rate)} ${pct(r.accept_rate)}</td>
+      <td>${pct(r.accept_ema)}${r.tree_longest ? ' / 树最长' + r.tree_longest : ''}</td>
+      <td>${r.token_rate.toFixed(3)}</td>
+      <td>${r.generated}/${r.max_new_tokens}</td>
+      <td>${paramCell(r)}</td>
+      <td>${r.blocks}</td>
+    </tr>`).join('');
+}
+
+function renderWait(rows) {
+  $('waitCount').textContent = rows.length + ' 个';
+  $('waitEmpty').hidden = rows.length !== 0;
+  $('waitBody').innerHTML = rows.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td><td>#${r.id}</td><td>${stateTag(r)}</td>
+      <td>${r.priority}</td><td>${r.prompt_len}</td><td>${r.blocks}</td>
+      <td>${r.swap_back_wanted ? '<span class="tag swap">待换回</span>' : ''}
+          ${swapTag(r)}</td>
+    </tr>`).join('');
+}
+
+function renderBlocks(s) {
+  $('blockInfo').textContent =
+    `块大小 ${s.block_size} · GPU ${s.gpu_blocks - s.gpu_free}/${s.gpu_blocks} · CPU ${s.cpu_blocks - s.cpu_free}/${s.cpu_blocks}`;
+  $('blockGrid').innerHTML = s.blocks.map(b => {
+    const cls = b.request_id === 0 ? 'free' : b.pool;
+    const title = `物理块 ${b.physical_id} (${b.pool})` +
+      (b.request_id ? ` · 请求 #${b.request_id}` : ' · 空闲');
+    return `<div class="cell ${cls}" title="${title}">${b.physical_id}</div>`;
+  }).join('');
+}
+
+function renderMisc(s) {
+  const rows = [...s.prefill, ...s.finished];
+  $('finCount').textContent =
+    `预填充 ${s.prefill.length} · 最近完成 ${s.finished.length}`;
+  $('miscBody').innerHTML = rows.map(r => `
+    <tr>
+      <td>#${r.id}</td><td>${stateTag(r)}</td><td>${r.prompt_len}</td>
+      <td>${r.generated}/${r.max_new_tokens}</td>
+      <td>${r.ttft_ticks || '-'}</td>
+      <td>${r.finish_reason || ''}</td>
+      <td>${swapTag(r)}</td>
+    </tr>`).join('');
+}
+
+async function refresh() {
+  try {
+    const s = await (await fetch('/state')).json();
+    $('tick').textContent = s.tick;
+    $('mode').textContent = s.spec_mode;
+    $('gpufree').textContent = s.gpu_free;
+    $('cpufree').textContent = s.cpu_free;
+    $('swaps').textContent = `${s.swaps_out}/${s.swaps_in}`;
+    $('swapbytes').textContent = s.swap_bytes;
+    $('tfwd').textContent = s.total_target_forwards;
+    $('dfwd').textContent = s.total_draft_forwards;
+    renderDecode(s.decoding);
+    renderWait(s.waiting);
+    renderBlocks(s);
+    renderMisc(s);
+  } catch (e) { /* 服务重启瞬间忽略 */ }
+}
+
+$('submitForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const body = {
+    prompt_len: parseInt($('plen').value, 10),
+    max_new: parseInt($('nlen').value, 10),
+    priority: parseInt($('prio').value, 10),
+    greedy: $('modeSel').value === 'greedy',
+    temperature: 1.0, top_p: 0.95, rep_penalty: 1.1,
+  };
+  await fetch('/submit', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  refresh();
+});
+
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>
